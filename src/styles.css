@@ -1,0 +1,36 @@
+:root { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #e9eee9; background: #101b19; font-synthesis: none; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; }
+button, select { font: inherit; }
+.app { max-width: 1540px; margin: 0 auto; padding: 32px; }
+.header { display: flex; justify-content: space-between; gap: 24px; align-items: start; margin-bottom: 28px; }
+.eyebrow { color: #91bdaa; font-size: 12px; font-weight: 700; letter-spacing: .16em; margin: 0 0 12px; }
+h1 { font-size: clamp(30px, 4vw, 48px); line-height: 1.08; letter-spacing: -.045em; margin: 0 0 12px; }
+.subtitle { color: #a8b8af; margin: 0; max-width: 700px; }
+.status { border: 1px solid #456457; color: #a9d5b7; border-radius: 100px; padding: 8px 12px; font-size: 11px; font-weight: 800; letter-spacing: .1em; white-space: nowrap; }
+.workspace { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 22px; align-items: start; }
+.pitch-panel { background: #1b2b26; border: 1px solid #365247; border-radius: 14px; padding: 12px; box-shadow: 0 22px 60px #08110e70; }
+canvas { width: 100%; height: auto; aspect-ratio: 1000 / 680; display: block; border-radius: 8px; cursor: grab; touch-action: none; }
+canvas:active { cursor: grabbing; }
+.pitch-caption { display: flex; justify-content: space-between; gap: 12px; color: #a6bdb0; font-size: 12px; padding: 12px 4px 2px; }
+.sidebar { display: grid; gap: 16px; }
+.card { background: #1b2924; border: 1px solid #344a3e; border-radius: 12px; padding: 18px; }
+h2 { font-size: 15px; margin: 0 0 16px; }
+h3 { font-size: 18px; margin: 4px 0 16px; }
+.controls { display: flex; gap: 8px; margin-bottom: 20px; }
+button, select { background: #243b30; border: 1px solid #4b6856; border-radius: 7px; color: #e7f2ea; padding: 9px 13px; cursor: pointer; }
+button:hover, select:hover { border-color: #92bd98; }
+button.primary { background: #b2d49a; color: #17281e; border-color: #b2d49a; font-weight: 700; }
+.field { display: grid; gap: 8px; color: #a9bcb0; font-size: 13px; margin-bottom: 16px; }
+.tactic-control > span { display: flex; justify-content: space-between; gap: 8px; }
+.tactic-control strong { color: #e9eee9; font-weight: 600; }
+.tactic-control input { width: 100%; accent-color: #b2d49a; cursor: pointer; }
+.readout { display: flex; justify-content: space-between; gap: 10px; border-top: 1px solid #344a3e; padding: 10px 0; font-size: 13px; }
+.readout span, .hint, .decision span, .note p { color: #a9bcb0; }
+.readout strong { color: #e9eee9; font-weight: 600; text-align: right; }
+.hint { font-size: 13px; margin: -8px 0 16px; }
+.decision { border-top: 1px solid #344a3e; padding-top: 13px; font-size: 13px; }
+.decision p { color: #b4d99f; margin: 5px 0 0; }
+.note p { font-size: 13px; line-height: 1.5; margin: 0; }
+@media (max-width: 950px) { .workspace { grid-template-columns: 1fr; } .sidebar { grid-template-columns: repeat(2, minmax(0, 1fr)); } .note { grid-column: 1 / -1; } }
+@media (max-width: 620px) { .app { padding: 18px; } .header { display: block; } .status { display: inline-block; margin-top: 16px; } .sidebar { grid-template-columns: 1fr; } .note { grid-column: auto; } .pitch-caption { flex-direction: column; } }
