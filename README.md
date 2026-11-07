@@ -15,9 +15,12 @@ Open the local URL printed by Vite. Drag the ball to see the closest defender pr
 
 ```sh
 npm run check   # TypeScript type check
+npm run check:watch  # keep checking types while editing (second terminal)
 npm test        # deterministic engine tests
 npm run build   # production browser bundle
 ```
+
+`npm run dev` checks types before starting. During development, run `npm run check:watch` in another terminal to see new type errors as files change. Browser runtime errors appear in the browser developer console.
 
 ## Architecture and Phase 1 plan
 

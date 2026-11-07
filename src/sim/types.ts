@@ -1,6 +1,6 @@
 import type { Vec2 } from './geometry';
 
-export type PlayerAction = 'hold-shape' | 'press';
+export type PlayerAction = 'hold-shape' | 'press' | 'cover';
 
 export interface PlayerState {
   id: number;

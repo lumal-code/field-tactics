@@ -4,10 +4,12 @@
   "description": "Headless soccer tactics simulation with a browser visualizer",
   "private": true,
   "scripts": {
+    "predev": "npm run check",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "check": "tsc --noEmit",
+    "check:watch": "tsc --noEmit --watch",
     "test": "vitest run"
   },
   "keywords": [],

@@ -1,4 +1,4 @@
-import { clampToPitch, distance } from './geometry';
+import { clampToPitch, distance, dot, length, scale, subtract, add } from './geometry';
 import type { Vec2 } from './geometry';
 import type { PlayerAction, PlayerState, SimulationConfig, SimulationState, TacticalConfig } from './types';
 
@@ -41,15 +41,40 @@ export function selectClosestPlayer(players: readonly PlayerState[], ball: Vec2)
   return closest;
 }
 
+export function selectNextClosest(players: readonly PlayerState[], ball: Vec2, currPresser: number | undefined): PlayerState | undefined {
+  let nextClosest: PlayerState | undefined;
+  let shortestDistance = Infinity;
+  for (const player of players) {
+    if (player.id === currPresser) {
+      continue;
+    }
+    const playerDistance = distance(player.position, ball);
+    if (playerDistance < shortestDistance || (playerDistance === shortestDistance && nextClosest && player.id < nextClosest.id)) {
+      nextClosest = player;
+      shortestDistance = playerDistance;
+    }
+  }
+  return nextClosest;
+}
+
 export function decideDefense(state: Readonly<SimulationState>, config: SimulationConfig): PlayerDecision[] {
   const presserId = selectClosestPlayer(state.players, state.ball)?.id;
+  const coverId = selectNextClosest(state.players, state.ball, presserId)?.id;
   return state.players.map((player): PlayerDecision => {
     if (player.id === presserId) {
       return {
         playerId: player.id,
         action: 'press',
-        target: { ...state.ball },
+        target: press(player, state.ball, config),
         reason: 'Press ball: closest defender',
+      };
+    }
+    if (player.id === coverId) {
+      return {
+        playerId: player.id,
+        action: 'cover',
+        target: betweenBallAndGoal(player, state.ball, config),
+        reason: 'Cover ball: second closest',
       };
     }
     const role = rolesById.get(player.id);
@@ -61,6 +86,42 @@ export function decideDefense(state: Readonly<SimulationState>, config: Simulati
       reason: 'Hold shape and shift with ball',
     };
   });
+}
+
+export function betweenBallAndGoal(player: PlayerState, ball: Vec2, config: SimulationConfig): Vec2 {
+  const goal: Vec2 = { x: 0, y: config.pitchHeight / 2 };
+  const ballToPlayer: Vec2 = subtract(player.position, ball);
+  const ballToGoal: Vec2 = subtract(goal, ball);
+  const b: Vec2 = ballToGoal;
+  const a: Vec2 = ballToPlayer;
+  const goalDistanceSquared = dot(b, b);
+  if (goalDistanceSquared === 0) return { ...ball };
+
+  const projbA: Vec2 = scale(ballToGoal, Math.abs(dot(a, b) / goalDistanceSquared));
+  const dirToLine: Vec2 = subtract(projbA, ballToPlayer);
+
+  return clampToPitch(
+    {
+      x: player.position.x + dirToLine.x,
+      y: player.position.y + dirToLine.y,
+    },
+    config.pitchWidth,
+    config.pitchHeight
+  );
+}
+
+export function press(player: PlayerState, ball: Vec2, config: SimulationConfig): Vec2 {
+  const goal: Vec2 = { x: 0, y: config.pitchHeight / 2 };
+  const playerToBall: Vec2 = subtract(ball, player.position);
+  const ballToGoal: Vec2 = subtract(goal, ball);
+
+  const distanceToGoal = length(ballToGoal);
+  const goalwardOffset = distanceToGoal === 0
+    ? { x: 0, y: 0 }
+    : scale(ballToGoal, Math.min(2, distanceToGoal) / distanceToGoal);
+  const targetDisplacement = add(playerToBall, goalwardOffset);
+
+  return clampToPitch(add(player.position, targetDisplacement), config.pitchWidth, config.pitchHeight);
 }
 
 export function effectiveDefensiveAnchor(anchor: Vec2, config: SimulationConfig, tactics: TacticalConfig): Vec2 {

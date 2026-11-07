@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { SimulationEngine, DEFAULT_CONFIG } from './engine';
 import { distance, length, limit } from './geometry';
 import { moveToward } from './movement';
+import { betweenBallAndGoal, press, selectClosestPlayer, selectNextClosest } from './tactics';
 
 describe('geometry and movement', () => {
   it('limits a vector without changing its direction', () => {
@@ -24,20 +25,16 @@ describe('geometry and movement', () => {
 });
 
 describe('simulation engine', () => {
-  it('moves the presser toward the ball while other defenders preserve shape targets', () => {
+  it('assigns one presser, one cover player, and one shape player', () => {
     const engine = new SimulationEngine();
     engine.setBallPosition({ x: 100, y: 68 });
     const before = engine.getSnapshot();
-    expect(before.players.map((player) => player.target)).toEqual([
-      { x: 47, y: 30.2 },
-      { x: 47, y: 44.2 },
-      { x: 100, y: 68 },
-    ]);
-    expect(before.players.map((player) => player.action)).toEqual(['hold-shape', 'hold-shape', 'press']);
+    expect(before.players.map((player) => player.action)).toEqual(['hold-shape', 'cover', 'press']);
+    expect(before.players[0]!.target).toEqual({ x: 47, y: 30.2 });
+    expect(distance(before.players[2]!.target, before.ball)).toBeCloseTo(2);
     for (let tick = 0; tick < 120; tick += 1) engine.step();
     const after = engine.getSnapshot();
     expect(after.players[0]!.position.x).toBeGreaterThan(before.players[0]!.position.x);
-    expect(after.players[0]!.target.y - after.players[1]!.target.y).toBeCloseTo(-14);
   });
 
   it('clamps the ball to the pitch and replays deterministically', () => {
@@ -70,9 +67,9 @@ describe('simulation engine', () => {
     expect(after.tactics).toEqual({ lineHeight: 48, compactness: 0.75 });
     expect(after.players.map((player) => player.position)).toEqual(before.players.map((player) => player.position));
     expect(after.players.map((player) => player.decision)).toEqual(before.players.map((player) => player.decision));
-    expect(after.players[0]!.target.x - baseline.getSnapshot().players[0]!.target.x).toBeCloseTo(13);
-    expect(after.players[2]!.target.y - after.players[0]!.target.y).toBeCloseTo(21);
-    expect(after.players[1]!.target).toEqual(after.ball);
+    expect(after.players[2]!.target.x - baseline.getSnapshot().players[2]!.target.x).toBeCloseTo(13);
+    expect(after.players[2]!.target.y - baseline.getSnapshot().players[2]!.target.y).toBeCloseTo(-3.5);
+    expect(distance(after.players[1]!.target, after.ball)).toBeCloseTo(2);
 
     configured.step();
     expect(configured.getSnapshot().players[1]!.position.x).toBeGreaterThan(before.players[1]!.position.x);
@@ -94,9 +91,51 @@ describe('decisions', () => {
     engine.setBallPosition({ x: 35, y: 20 });
     const movedBall = engine.getSnapshot();
     expect(movedBall.players.filter((player) => player.action === 'press').map((player) => player.id)).toEqual([2]);
-    expect(movedBall.players[0]!.target).toEqual(movedBall.ball);
+    expect(distance(movedBall.players[0]!.target, movedBall.ball)).toBeCloseTo(2);
 
     engine.setBallPosition({ x: 35, y: 27 });
     expect(engine.getSnapshot().players.filter((player) => player.action === 'press').map((player) => player.id)).toEqual([2]);
+  });
+
+  it('places the press target two meters goal-side of the ball', () => {
+    const player = new SimulationEngine().getSnapshot().players[1]!;
+    expect(press(player, { x: 68, y: 34 }, DEFAULT_CONFIG)).toEqual({ x: 66, y: 34 });
+    expect(press(player, { x: 36, y: 34 }, DEFAULT_CONFIG)).toEqual({ x: 34, y: 34 });
+    expect(press(player, { x: 35, y: 34 }, DEFAULT_CONFIG)).toEqual({ x: 33, y: 34 });
+    expect(press(player, { x: 0, y: 34 }, DEFAULT_CONFIG)).toEqual({ x: 0, y: 34 });
+  });
+
+  it('projects a cover player onto the ball-to-goal line', () => {
+    const player = new SimulationEngine().getSnapshot().players[0]!;
+    expect(betweenBallAndGoal(player, { x: 68, y: 34 }, DEFAULT_CONFIG)).toEqual({ x: 35, y: 34 });
+  });
+
+  it('keeps a projected cover target within the full pitch width', () => {
+    const player = new SimulationEngine().getSnapshot().players[0]!;
+    player.position = { x: 80, y: 20 };
+    expect(betweenBallAndGoal(player, { x: 90, y: 34 }, DEFAULT_CONFIG)).toEqual({ x: 80, y: 34 });
+  });
+
+  it('keeps the cover target finite when the ball is at the goal', () => {
+    const player = new SimulationEngine().getSnapshot().players[0]!;
+    expect(betweenBallAndGoal(player, { x: 0, y: 34 }, DEFAULT_CONFIG)).toEqual({ x: 0, y: 34 });
+
+    const engine = new SimulationEngine();
+    engine.setBallPosition({ x: 0, y: 34 });
+    engine.step();
+    for (const defender of engine.getSnapshot().players) {
+      expect(Number.isFinite(defender.target.x)).toBe(true);
+      expect(Number.isFinite(defender.target.y)).toBe(true);
+      expect(Number.isFinite(defender.position.x)).toBe(true);
+      expect(Number.isFinite(defender.position.y)).toBe(true);
+    }
+  });
+
+  it('selects the second closest player when the first listed player is closest', () => {
+    const players = new SimulationEngine().getSnapshot().players;
+    const ball = { x: 35, y: 20 };
+    const presserId = selectClosestPlayer(players, ball)?.id;
+    expect(presserId).toBe(2);
+    expect(selectNextClosest(players, ball, presserId)?.id).toBe(3);
   });
 });
