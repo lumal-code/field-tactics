@@ -1,7 +1,7 @@
 {
   "name": "field-tactics",
   "version": "1.0.0",
-  "description": "Headless soccer tactics simulation with a browser visualizer",
+  "description": "Python soccer simulation skeleton with a separate browser visualizer",
   "private": true,
   "scripts": {
     "predev": "npm run check",
@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "check": "tsc --noEmit",
     "check:watch": "tsc --noEmit --watch",
-    "test": "vitest run"
+    "test": ".venv/bin/python -m unittest discover -s tests"
   },
   "keywords": [],
   "author": "",
@@ -25,8 +25,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.2.1",
     "typescript": "^7.0.2",
-    "vite": "^8.3.5",
-    "vitest": "^5.1.0"
+    "vite": "^8.3.5"
   },
   "dependencies": {
     "react": "^19.3.1",
