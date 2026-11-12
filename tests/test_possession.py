@@ -124,7 +124,7 @@ class PossessionTests(unittest.TestCase):
 
 
 class DribbleDecisionTests(unittest.TestCase):
-    def test_carrier_attacks_the_goal_when_not_under_pressure(self):
+    def test_carrier_holds_position_when_not_under_pressure(self):
         carrier = Player(1, "left", Vec2(15, 10))
         teammate = Player(2, "left", Vec2(14, 10))
         nearest = Player(1, "right", Vec2(10, 10))
@@ -134,14 +134,14 @@ class DribbleDecisionTests(unittest.TestCase):
         decisions = simulation.get_decisions()
         attacking = [decision for decision in decisions if decision.team_id == "left"]
         self.assertEqual([decision.player_id for decision in attacking], [1])
-        self.assertEqual(attacking[0].target.distance(simulation.state.goals["right"].position), 0)
+        self.assertEqual(attacking[0].target.distance(carrier.position), 0)
 
-    def test_carrier_with_no_teammate_keeps_dribbling_under_pressure(self):
+    def test_carrier_with_no_teammate_holds_position_under_pressure(self):
         carrier = Player(1, "left", Vec2(39, 10))
         defender = Player(1, "right", Vec2(38, 10))
         simulation = scenario([carrier, defender], Ball(Vec2(39.48, 10), status=BallStatus.CONTROLLED, owner=("left", 1)))
         decision = next(decision for decision in simulation.get_decisions() if decision.team_id == "left")
-        self.assertEqual(decision.target.distance(simulation.state.goals["right"].position), 0)
+        self.assertEqual(decision.target.distance(carrier.position), 0)
 
 
 if __name__ == "__main__":

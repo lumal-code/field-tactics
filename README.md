@@ -8,7 +8,7 @@ frontend/          React, TypeScript, and Canvas match view
 tests/             Python engine tests
 ```
 
-The browser currently renders a local, static 3v3 sample. It does not run or read the Python simulation. The Python engine includes constrained running, braking, turning, rolling ball motion, disc contacts, possession, and passing. A carrier dribbles toward the attacking goal and passes to their nearest teammate when an opponent comes within 3 m.
+The browser currently renders a local, static 3v3 sample. It does not run or read the Python simulation. The Python engine currently starts a 3v1 rondo, with constrained running, braking, turning, rolling ball motion, disc contacts, possession, and passing. Carriers hold their position and, under pressure within 3 m, pass to the nearest teammate with a clear lane.
 
 ## Run the Python simulation
 
@@ -21,11 +21,15 @@ python3 -m venv .venv
 .venv/bin/python -m unittest discover -s tests
 ```
 
-The Pygame window draws the pitch, ball, and both three-player teams from a plain-data view of the Python state. Press **Space** to play or pause, **Right Arrow** for one step while paused, **R** to reset, or **Esc** to quit. You can drag the ball. Short lines show player velocity. The default pitch is 40 × 20 m and the physics runs at fixed ticks independently of drawing.
+The Pygame window draws the pitch, ball, and players from a plain-data view of the Python state. Press **Space** to play or pause, **Right Arrow** for one step while paused, **R** to reset, or **Esc** to quit. You can drag the ball. Short lines show player velocity. The default rondo pitch is 20 × 20 m and the physics runs at fixed ticks independently of drawing.
 
 A blue ring means `RECEIVING_BALL` (within 1 m of the ball), and a gold ring means `DRIBBLING`. Physical contact claims a free ball. The ball follows its carrier, whose teammates stop chasing it. Opponent contact can challenge possession; simultaneous contacts are resolved randomly, once per continuous contact. Set `seed` in the simulation config for repeatable contests, and `receiving_distance` to change the 1 m threshold.
 
-Under pressure (an opponent within 3 m), the carrier passes to the nearest teammate. Kick speed accounts for distance and rolling friction, targeting at least 3 m/s at the teammate's current position. The receiver stays near that reception point, and the passer brakes while the ball travels. The ball readout shows the intended receiver during flight. Opponents can intercept, and possession is still awarded on contact. This initial model does not lead a moving receiver or evaluate whether a passing lane is safe.
+Under pressure (an opponent within 3 m), the carrier checks teammates from nearest to farthest. A defender blocks a lane if their body intersects the ball's straight path from release to reception, including the ball's radius. A blocked nearest option causes the carrier to try the other teammate; if all options are blocked, the carrier keeps dribbling. Kick speed accounts for distance and rolling friction, targeting at least 3 m/s at the teammate's current position. The receiver stays near that reception point, and the passer brakes while the ball travels. The ball readout shows the intended receiver during flight. Opponents can still move into the path and intercept after launch. This initial model does not lead a moving receiver or predict future defender positions.
+
+The pressing player uses three decisions: go directly at the carrier when the ball is controlled, aim for a predicted interception point when it is loose and moving, and go directly at a stationary loose ball. Prediction accounts for rolling friction, estimated acceleration/speed, and a response-time margin, with a maximum three-second lookahead. It is recalculated every tick and does not model future collisions or exact turning time. An intended pass receiver still holds the reception point.
+
+The rondo defender's `default_position` is the pitch center. When the ball is at least `reset_distance` (default 5 m) from the defender, its movement target becomes that default position. It runs back using normal physics and resumes pursuit as soon as the ball is closer than 5 m. The rule applies to players with a configured default position; the rondo attackers have none.
 
 See [docs/physics.md](docs/physics.md) for the assumptions, formulas, parameter defaults, research sources, and verification scenarios. These parameters are engineering defaults, not measurements of real players.
 

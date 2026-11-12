@@ -28,14 +28,14 @@ class RecordingSimulation(SoccerSimulation):
 
 
 class SoccerSimulationTests(unittest.TestCase):
-    def test_initial_state_has_two_teams_of_three(self):
+    def test_initial_state_has_three_attackers_and_one_defender(self):
         state = SoccerSimulation({"pitch_width": 100, "pitch_height": 68}).state
         self.assertEqual(len(state.teams["left"].players), 3)
-        self.assertEqual(len(state.teams["right"].players), 3)
+        self.assertEqual(len(state.teams["right"].players), 1)
         self.assertEqual((state.ball.position.x, state.ball.position.y), (68.0, 34.0))
         self.assertIs(state.ball.status, BallStatus.LOOSE)
         self.assertIsNone(state.ball.owner)
-        self.assertEqual([player.team_id for player in state.teams["right"].players], ["right"] * 3)
+        self.assertEqual([player.team_id for player in state.teams["right"].players], ["right"])
 
     def test_step_runs_phases_in_order_and_returns_state(self):
         simulation = RecordingSimulation({})
@@ -76,22 +76,26 @@ class SoccerSimulationTests(unittest.TestCase):
 
     def test_nearest_player_on_each_team_moves_toward_the_ball(self):
         simulation = SoccerSimulation({})
-        before = {
-            team_id: [player.position.x for player in team.players]
-            for team_id, team in simulation.state.teams.items()
-        }
+        before = {(player.team_id, player.id): player.position.copy()
+                  for team in simulation.state.teams.values() for player in team.players}
+        selected = {(action.team_id, action.player_id) for action in simulation.get_decisions()}
+        ball_position = simulation.state.ball.position.copy()
         for _ in range(60):
             simulation.step(1 / 60)
         self.assertAlmostEqual(simulation.state.time, 1.0)
         for team_id, team in simulation.state.teams.items():
-            self.assertGreater(team.players[1].position.x, before[team_id][1])
-            self.assertEqual(team.players[0].position.x, before[team_id][0])
-            self.assertEqual(team.players[2].position.x, before[team_id][2])
-            self.assertLessEqual(team.players[1].velocity.magnitude(), team.players[1].max_speed)
+            for player in team.players:
+                previous = before[(team_id, player.id)]
+                if (team_id, player.id) in selected:
+                    self.assertLess(player.position.distance(ball_position), previous.distance(ball_position))
+                else:
+                    self.assertEqual(player.position.distance(previous), 0)
+                self.assertLessEqual(player.velocity.magnitude(), player.max_speed)
 
     def test_movement_respects_acceleration_limit(self):
         simulation = SoccerSimulation({})
-        player = simulation.state.teams["left"].players[1]
+        action = next(action for action in simulation.get_decisions() if action.team_id == "left")
+        player = next(player for player in simulation.state.teams["left"].players if player.id == action.player_id)
         simulation.step(0.1)
         self.assertAlmostEqual(player.velocity.magnitude(), player.max_acceleration * 0.1)
         self.assertAlmostEqual(player.acceleration.magnitude(), player.max_acceleration)
@@ -112,9 +116,10 @@ class SoccerSimulationTests(unittest.TestCase):
 
     def test_render_state_is_plain_and_detached(self):
         simulation = SoccerSimulation({"pitch_width": 100, "pitch_height": 68})
+        original_x = simulation.state.teams["left"].players[0].position.x
         rendered = to_render_state(simulation.state)
         rendered["teams"]["left"]["players"][0]["position"]["x"] = -10
-        self.assertEqual(simulation.state.teams["left"].players[0].position.x, 35.0)
+        self.assertEqual(simulation.state.teams["left"].players[0].position.x, original_x)
         self.assertEqual(rendered["ball"], {
             "x": 68.0, "y": 34.0, "radius": 0.11, "status": "loose", "owner": None, "pass": None,
         })
@@ -130,13 +135,13 @@ class SoccerSimulationTests(unittest.TestCase):
 
     def test_decisions_use_absolute_positions_and_detached_targets(self):
         simulation = SoccerSimulation({})
+        original = simulation.state.ball.position.copy()
         decisions = simulation.get_decisions()
         self.assertEqual(len(decisions), 2)
         for decision in decisions:
-            self.assertAlmostEqual(decision.target.x, 27.2)
-            self.assertAlmostEqual(decision.target.y, 10)
+            self.assertEqual(decision.target.distance(original), 0)
         decisions[0].target.x = -1
-        self.assertAlmostEqual(simulation.state.ball.position.x, 27.2)
+        self.assertEqual(simulation.state.ball.position.distance(original), 0)
 
 
 if __name__ == "__main__":

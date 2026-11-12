@@ -71,12 +71,16 @@ class Player:
     mass: float = 75.0
     facing: Vec2 = field(default_factory=lambda: Vec2(1, 0))
     status: PlayerStatus = PlayerStatus.IDLE
+    default_position: Vec2 | None = None
+    reset_distance: float = 3.0  # Ball distance at which pursuit returns home.
 
     def __post_init__(self):
         _validate_parameters(self, (
             "max_acceleration", "max_deceleration", "max_lateral_acceleration",
-            "response_time", "radius", "mass",
+            "response_time", "radius", "mass", "reset_distance",
         ), ("max_speed", "arrival_radius"))
+        if self.default_position is not None:
+            self.default_position = self.default_position.copy()
 
 
 @dataclass

@@ -5,7 +5,7 @@ from math import isfinite
 from .objects import BallStatus
 from .physics import PhysicsConfig, advance_physics, pass_ball, plan_pass
 from .possession import PossessionSystem
-from .state import initialize_game
+from .state import initialize_game, initialize_rondo
 from .tactics import MoveDecision, PassDecision, decide
 
 
@@ -15,7 +15,7 @@ class SoccerSimulation:
         self.fixed_dt = config.get("fixed_dt", 1 / 60)
         if not isfinite(self.fixed_dt) or not 0 < self.fixed_dt <= self.physics_config.max_step:
             raise ValueError("fixed_dt must be positive and no larger than physics.max_step")
-        self.state = initialize_game(config)
+        self.state = initialize_rondo(config)
         self.possession = PossessionSystem(
             seed=config.get("seed"), receiving_distance=config.get("receiving_distance", 1.0),
         )

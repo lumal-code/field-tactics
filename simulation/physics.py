@@ -125,6 +125,19 @@ def pass_ball(ball, passer, receiver, arrival_speed=3.0):
     )
 
 
+def predict_ball_position(ball, seconds):
+    """Predict free rolling without changing state or including future contacts."""
+    if not isfinite(seconds) or seconds < 0:
+        raise ValueError("prediction time must be finite and nonnegative")
+    speed = ball.velocity.magnitude()
+    if speed <= EPSILON or ball.status is BallStatus.CONTROLLED:
+        return ball.position.copy()
+    direction = ball.velocity / speed
+    rolling_time = min(seconds, speed / ball.rolling_deceleration) if ball.rolling_deceleration > 0 else seconds
+    travel = speed * rolling_time - 0.5 * ball.rolling_deceleration * rolling_time ** 2
+    return ball.position + direction * travel
+
+
 def update_ball(ball, dt):
     """Integrate constant rolling deceleration exactly, without reversing."""
     _validate_dt(dt)
@@ -135,9 +148,7 @@ def update_ball(ball, dt):
         ball.velocity = Vec2(0, 0)
         return
     direction = ball.velocity / speed
-    rolling_time = min(dt, speed / ball.rolling_deceleration) if ball.rolling_deceleration > 0 else dt
-    travel = speed * rolling_time - 0.5 * ball.rolling_deceleration * rolling_time ** 2
-    ball.position += direction * travel
+    ball.position = predict_ball_position(ball, dt)
     ball.velocity = direction * max(0.0, speed - ball.rolling_deceleration * dt)
 
 

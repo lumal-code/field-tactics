@@ -42,6 +42,58 @@ def initialize_game(config):
         },
     )
 
+def initialize_rondo(config):
+    width = config.get("pitch_width", 20) # field set in meters
+    height = config.get("pitch_height", 20)
+    if not isfinite(width) or not isfinite(height) or width <= 0 or height <= 0:
+        raise ValueError("pitch dimensions must be positive finite numbers")
+    center_y = height / 2
+    goal_width = config.get("goal_width", min(3.0, height / 2))
+    goal_depth = config.get("goal_depth", 1.0)
+    if goal_width > height:
+        raise ValueError("goal_width must fit within the pitch height")
+
+    def attackerTeam(team_id, x):
+        return Team(
+            id=team_id,
+            players=[
+                Player(
+                    id=player_id, team_id=team_id,
+                    position=Vec2(x + offset_x * width / 68, center_y + offset_y * height / 68),
+                    facing=Vec2(1 if team_id == "left" else -1, 0),
+                    **config.get("player", {}),
+                )
+                for player_id, offset_y, offset_x in ((2, 10, -10), (3, -10, 0), (4, 10, 10))
+            ],
+        )
+    
+    def defenderTeam(team_id, x):
+        player_options = {"default_position": Vec2(width / 2, center_y), **config.get("player", {})}
+        return Team(
+            id=team_id,
+            players=[
+                Player(
+                    id=3, team_id=team_id,
+                    position=Vec2(x, center_y),
+                    facing=Vec2(1, 0),
+                    **player_options,
+                )
+            ],
+        )
+       
+    
+
+    return GameState(
+        time=0.0,
+        pitch={"width": width, "height": height},
+        ball=Ball(position=Vec2(width * 0.68, center_y), **config.get("ball", {})),
+        teams={"left": attackerTeam("left", width * 0.5), "right": defenderTeam("right", width * 0.5)},
+        goals={
+            "left": Goal("left", Vec2(0, center_y), Vec2(1, 0), goal_width, goal_depth),
+            "right": Goal("right", Vec2(width, center_y), Vec2(-1, 0), goal_width, goal_depth),
+        },
+    )
+
 
 def to_render_state(state):
     """Produce plain data without exposing the engine's mutable objects."""
@@ -76,6 +128,10 @@ def to_render_state(state):
                         "velocity": {"x": float(player.velocity.x), "y": float(player.velocity.y)},
                         "radius": player.radius,
                         "status": player.status.value,
+                        "default_position": {
+                            "x": float(player.default_position.x), "y": float(player.default_position.y),
+                        } if player.default_position is not None else None,
+                        "reset_distance": player.reset_distance,
                     }
                     for player in team.players
                 ]

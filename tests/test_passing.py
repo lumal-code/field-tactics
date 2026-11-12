@@ -6,7 +6,7 @@ from simulation import SoccerSimulation
 from simulation.objects import Ball, BallStatus, Player, Team
 from simulation.physics import kick_ball, pass_ball, plan_pass, update_ball
 from simulation.state import to_render_state
-from simulation.tactics import MoveDecision, PassDecision
+from simulation.tactics import MoveDecision, PassDecision, is_pass_blocked
 from simulation.vectors import Vec2
 
 
@@ -25,6 +25,32 @@ def controlled_scenario(passer, teammates, opponents, ball=None):
 
 
 class PassDecisionTests(unittest.TestCase):
+    def test_a_blocked_nearest_teammate_falls_back_to_the_other_teammate(self):
+        passer = Player(1, "left", Vec2(10, 10))
+        nearest = Player(2, "left", Vec2(14, 10))
+        other = Player(3, "left", Vec2(10, 16))
+        simulation = controlled_scenario(passer, [nearest, other], [Player(1, "right", Vec2(12, 10))])
+        action = next(action for action in simulation.get_decisions() if action.team_id == "left")
+        self.assertIsInstance(action, PassDecision)
+        self.assertEqual(action.receiver_id, 3)
+
+    def test_a_clear_nearest_lane_keeps_priority_over_the_other_teammate(self):
+        passer = Player(1, "left", Vec2(10, 10))
+        nearest = Player(2, "left", Vec2(14, 10))
+        other = Player(3, "left", Vec2(10, 16))
+        simulation = controlled_scenario(passer, [nearest, other], [Player(1, "right", Vec2(10, 12))])
+        action = next(action for action in simulation.get_decisions() if action.team_id == "left")
+        self.assertIsInstance(action, PassDecision)
+        self.assertEqual(action.receiver_id, 2)
+
+    def test_both_blocked_lanes_keep_the_carrier_dribbling(self):
+        passer = Player(1, "left", Vec2(10, 10))
+        simulation = controlled_scenario(passer, [
+            Player(2, "left", Vec2(14, 10)), Player(3, "left", Vec2(10, 16)),
+        ], [Player(1, "right", Vec2(12, 10)), Player(2, "right", Vec2(10, 12))])
+        action = next(action for action in simulation.get_decisions() if action.team_id == "left")
+        self.assertIsInstance(action, MoveDecision)
+
     def test_pressure_at_three_meters_selects_the_nearest_teammate(self):
         passer = Player(1, "left", Vec2(10, 10))
         near = Player(3, "left", Vec2(10, 16))
@@ -127,8 +153,12 @@ class PassIntegrationTests(unittest.TestCase):
     def test_an_opponent_can_intercept_and_clear_the_pass_intent(self):
         passer = Player(1, "left", Vec2(10, 10))
         receiver = Player(2, "left", Vec2(20, 10))
-        opponent = Player(1, "right", Vec2(12, 10))
+        opponent = Player(1, "right", Vec2(12, 11))
         simulation = controlled_scenario(passer, [receiver], [opponent])
+        # The lane is clear when selected; a defender then moves into the flight.
+        simulation.apply_actions(simulation.get_decisions(), simulation.fixed_dt)
+        self.assertIsNotNone(simulation.state.ball.pass_state)
+        opponent.position = Vec2(12, 10)
         for _ in range(120):
             simulation.step()
             if simulation.state.ball.owner == ("right", 1):
@@ -155,6 +185,26 @@ class PassIntegrationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             simulation.apply_actions([PassDecision("left", 2, 1)], simulation.fixed_dt)
         self.assertEqual(simulation.state.ball.owner, ("left", 1))
+
+
+class PassLaneTests(unittest.TestCase):
+    def test_a_defender_on_or_touching_the_lane_blocks_it(self):
+        for y in (0, 0.46):
+            with self.subTest(y=y):
+                defender = Player(1, "right", Vec2(5, y))
+                self.assertTrue(is_pass_blocked(Vec2(0, 0), Vec2(10, 0), [defender], 0.11))
+
+    def test_defenders_outside_the_lane_or_beyond_its_ends_do_not_block(self):
+        for position in (Vec2(5, 0.47), Vec2(-2, 0), Vec2(12, 0)):
+            with self.subTest(position=position):
+                defender = Player(1, "right", position)
+                self.assertFalse(is_pass_blocked(Vec2(0, 0), Vec2(10, 0), [defender], 0.11))
+
+    def test_diagonal_lanes_use_perpendicular_distance(self):
+        defender = Player(1, "right", Vec2(5, 5.5))
+        self.assertTrue(is_pass_blocked(Vec2(0, 0), Vec2(10, 10), [defender], 0.11))
+        defender.position = Vec2(5, 6)
+        self.assertFalse(is_pass_blocked(Vec2(0, 0), Vec2(10, 10), [defender], 0.11))
 
 
 if __name__ == "__main__":

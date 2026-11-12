@@ -14,7 +14,7 @@ Predictive crowd avoidance is deliberately a future layer. [RVO2 separates prefe
 
 ## Units, state, and defaults
 
-Coordinates and radii use meters, time uses seconds, velocity uses m/s, acceleration uses m/s², and mass uses kilograms. The default pitch remains the project's 40 × 20 m training field. Positive x points right and positive y points down in the top-down view. There is no gravity term because all motion lies on the ground plane.
+Coordinates and radii use meters, time uses seconds, velocity uses m/s, acceleration uses m/s², and mass uses kilograms. The current engine starts a 3v1 rondo on a 20 × 20 m pitch. The original `initialize_game` helper still creates a 40 × 20 m 3v3 field by default. Positive x points right and positive y points down in the top-down view. There is no gravity term because all motion lies on the ground plane.
 
 | Parameter | Default | Meaning |
 | --- | ---: | --- |
@@ -126,7 +126,18 @@ No lofted passes, gravity, aerodynamic drag, spin, turf variation, or bouncing o
 
 ### Ground passes
 
-`PassDecision` identifies the carrier and an intended teammate. A carrier issues this action when any opponent's center is at most 3 m away, selecting the nearest teammate by current center distance. Equal distances use player IDs as a stable tiebreaker. With no teammate or an infeasible pass, the carrier keeps the existing goal-directed dribble behavior.
+`PassDecision` identifies the carrier and an intended teammate. When any opponent's center is at most 3 m away, the carrier considers teammates from nearest to farthest by current center distance. Equal distances use player IDs as a stable tiebreaker. The first feasible pass with an unblocked lane is selected. With no clear feasible option, the carrier uses `dribble_target`, which currently holds position for the rondo.
+
+`is_pass_blocked` checks the finite segment from the planned ball release point A to the receiver's current position B. For each defender center C, it computes the nearest point P on that segment:
+
+```text
+S = B − A
+t = clamp(dot(C − A, S) / dot(S, S), 0, 1)
+P = A + tS
+blocked if |C − P| <= defender.radius + ball.radius
+```
+
+A zero-length segment uses A as its nearest point. Adding the ball radius accounts for its swept disc, rather than requiring a defender's center to sit exactly on a zero-width line. Clamping t means a defender far behind the passer or beyond the receiver does not block the lane. Teammates are not treated as defenders. This checks current geometry only: a defender can still move into the pass after it has been launched. In the initial 3v3 scenario, a blocked nearest option leads to trying the other teammate; if both lanes are blocked, the carrier keeps dribbling.
 
 `plan_pass` places the release point just outside the passer's body in the direction of the receiver, at `player.radius + ball.radius + 0.02` meters from the passer center. This is an instantaneous foot-placement approximation, allowing backward passes without sending the ball through the passer's contact disc.
 
@@ -144,7 +155,7 @@ The second bound lets a moving passer release the ball faster than their own vel
 
 For an unobstructed roll to a stationary target, the formula predicts exactly 3 m/s at the target center, or more if the moving-passer bound raised launch speed. Physical reception normally happens earlier, at body contact, so contact speed is slightly higher. This guarantee is a prediction at the planned point; moving receivers, interceptions, contacts, and boundaries can change where or whether reception happens.
 
-`Ball.pass_state` stores the passer, receiver, and a detached copy of the reception point. The receiver is directed to hold or return to that point during flight, and teammates do not all chase the pass. The opposing team's nearest player can still pursue and intercept it. Acquiring possession clears this intent. A generic kick, dragging the ball, or a loose ball coming to rest also cancels it. This initial policy neither leads moving receivers nor checks passing-lane safety.
+`Ball.pass_state` stores the passer, receiver, and a detached copy of the reception point. The receiver is directed to hold or return to that point during flight, and teammates do not all chase the pass. The opposing team's nearest player can still pursue and intercept it. Acquiring possession clears this intent. A generic kick, dragging the ball, or a loose ball coming to rest also cancels it. This initial policy does not lead moving receivers or predict future defender positions.
 
 ## Contacts and boundaries
 
@@ -183,9 +194,36 @@ The engine's possession callback checks all player-ball contacts together at the
 
 For a controlled ball, a new opponent contact triggers a uniform random contest between the carrier and all new challengers. A teammate cannot take the carrier's ball by walking into it. Continuous contacts are remembered so the same encounter is not rolled again every substep; an opponent must separate and touch again to challenge again. The winning owner is stored on the ball, and player statuses are refreshed. `CONTESTED` is not displayed as a lasting intermediate state because the random decision is immediate.
 
-The carrier's dribble target is the center of the opposing team's goal, following the current implementation of `dribble_target`. Pressure within 3 m overrides that movement with a pass decision when a valid teammate is available. Teammates stop chasing their carrier, while the opposing team's nearest player pursues the ball. During a pass, the intended receiver holds the reception point. Running acceleration, turning limits, and pitch containment still apply.
+The current rondo version of `dribble_target` returns the carrier's own position, so carriers hold until a pass is selected. Pressure within 3 m triggers a pass decision when a clear feasible teammate is available. Teammates stop chasing their carrier. During a pass, the intended receiver holds the reception point. Running acceleration, turning limits, and pitch containment still apply.
 
 These are simple gameplay rules, rather than a realistic model of trapping, shielding, or tackling. Calling `advance_physics` without the engine's possession callback retains pure ball collision behavior for standalone physics experiments.
+
+### Defender decisions and interception prediction
+
+The team's pressing player is selected by distance to the carrier when controlled, or distance to the ball when free; player IDs break distance ties. The rondo defender stores an independent `Player.default_position` at `(pitch.width / 2, pitch.height / 2)`. If the ball is at least `Player.reset_distance` (default 5 m, measured center to center) from the defender, `defender_target` returns a copy of that default position before checking pursuit. This is a movement command rather than a teleport. It is reconsidered every tick: pursuit resumes immediately when the distance falls below the threshold, even if the return to center is incomplete. Players whose `default_position` is `None` have no distance reset rule; this includes the rondo attackers by default.
+
+When the reset rule does not apply, `defender_target` selects one of three behaviors:
+
+1. Controlled ball: target the carrier's current position directly.
+2. Free, moving ball: target an estimated interception point.
+3. Free, stationary ball: target the ball's current position directly.
+
+The intended receiver of an active pass keeps the reception-point decision instead of using this defensive policy. Other eligible teams use it for their nearest pursuer. All returned targets are detached position values.
+
+`predict_ball_position` uses the same exact free-rolling equation as `update_ball`, without mutating the ball. It includes rolling deceleration and the stopping point. The tactical search evaluates future times t from 0.05 s to 3 s in 0.05 s increments. Predicted targets are clipped inside the pitch by the ball radius, approximating the default closed training area.
+
+For each candidate time, estimated player travel uses current speed s₀ (capped at maximum speed), forward acceleration a, maximum speed v_max, and response time τ:
+
+```text
+t_available = max(0, t − τ)
+t_accelerating = min(t_available, (v_max − s₀) / a)
+reach = s₀ × t_accelerating + 0.5a × t_accelerating²
+        + v_max × (t_available − t_accelerating)
+```
+
+The response margin compensates approximately for the velocity controller's reaction and arrival slowdown. The first candidate where the player's distance to the predicted point is no greater than `reach + player.radius + ball.radius` is selected. If no sample is reachable, the three-second predicted point is used as a pursuit fallback. A ball that stops sooner stays at its stopping point in all later predictions.
+
+This is a bounded heuristic, not an exact time-optimal trajectory solver. It uses the player's speed magnitude, not its direction, and does not solve turning, braking, future contact, or ball boundary sliding exactly. It is re-evaluated every decision tick, and movement still obeys the actual motor limits. No prediction of future carrier motion is used for the controlled-ball branch.
 
 ## Time stepping and repeatability
 
@@ -230,9 +268,11 @@ Before comparing tactical strategies, validate running and stopping distances, t
 
 `tests/test_physics.py` checks acceleration and speed bounds, stationary-target arrival, idle braking distance, reversal, the turning ellipse, convergence across tick sizes, ball friction and stopping, momentum/restitution for an isolated contact, a fast head-on ball collision, coincident-body recovery, boundary behavior, controlled-ball attachment, and invalid inputs. Engine tests cover absolute targets, detached render data, decision/update ordering, and deterministic scenario replay.
 
-`tests/test_possession.py` checks the 1 m receiving threshold, contact-only acquisition, full receiving-to-dribbling movement, fast-ball capture, simultaneous random selection, possession transfer, contact latching, teammate behavior, seeded replay, and goal-directed dribbling.
+`tests/test_possession.py` checks the 1 m receiving threshold, contact-only acquisition, full receiving-to-dribbling movement, fast-ball capture, simultaneous random selection, possession transfer, contact latching, teammate behavior, seeded replay, and the current stationary-carrier rondo behavior.
 
-`tests/test_passing.py` checks the 3 m pressure threshold, nearest-teammate selection, distance ties, predicted arrival speed with and without friction, velocity direction, speed-cap rejection, complete reception, moving/backward releases without self-recapture, interception, detached pass metadata, and action ownership validation.
+`tests/test_passing.py` checks the 3 m pressure threshold, nearest-teammate selection, blocked-lane fallback, both lanes blocked, segment endpoints, defender/ball radii, diagonal paths, distance ties, predicted arrival speed with and without friction, velocity direction, speed-cap rejection, complete reception, moving/backward releases without self-recapture, interception, detached pass metadata, and action ownership validation.
+
+`tests/test_defending.py` checks the stored center position, the inclusive 5 m reset threshold, its priority over pursuit, resuming pursuit inside the threshold, return movement through physics, the three defensive branches and state changes, nearest-carrier selection, intended-receiver priority, friction-aware and bounded prediction, player acceleration effects, prediction without state mutation, and a complete moving-ball interception.
 
 These checks verify the stated numerical model. They do not establish biological accuracy, collision-free planning, or tactical quality.
 
