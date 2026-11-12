@@ -3,6 +3,8 @@ import numpy as np
 class Vec2:
     def __init__(self, x, y):
         self.array = np.array([x, y], dtype=float)
+        if not np.isfinite(self.array).all():
+            raise ValueError("vector components must be finite")
 
     @property
     def x(self):
@@ -32,9 +34,15 @@ class Vec2:
     def distance(self, b):
         return np.linalg.norm(self.array - b.array)
 
+    def dot(self, other):
+        return float(np.dot(self.array, other.array))
+
+    def copy(self):
+        return Vec2(self.x, self.y)
+
     def limit(self, max_magnitude):
-        if max_magnitude < 0:
-            raise ValueError("Maximum magnitude must be nonnegative")
+        if not np.isfinite(max_magnitude) or max_magnitude < 0:
+            raise ValueError("Maximum magnitude must be finite and nonnegative")
 
         length = self.magnitude()
         if length > max_magnitude:
@@ -51,6 +59,11 @@ class Vec2:
         return Vec2(*(self.array * scalar))
 
     __rmul__ = __mul__
+
+    def __truediv__(self, scalar):
+        if not np.isfinite(scalar) or scalar == 0:
+            raise ValueError("divisor must be finite and nonzero")
+        return Vec2(*(self.array / scalar))
 
     def __repr__(self):
         return f"Vec2({self.x}, {self.y})"
