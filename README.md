@@ -33,6 +33,8 @@ The rondo defender's `default_position` is the pitch center. When the ball is at
 
 See [docs/physics.md](docs/physics.md) for the assumptions, formulas, parameter defaults, research sources, and verification scenarios. These parameters are engineering defaults, not measurements of real players.
 
+See [docs/development-log.md](docs/development-log.md) for the history of logic and tactics changes, parameter experiments, verification results, and open questions for the project report. Add a dated entry there when changing simulation behavior.
+
 Goal geometry lives in `simulation.state.goals["left"]` and `simulation.state.goals["right"]`. Each goal stores its defending team, mouth center, facing direction, width, and depth. Defaults are 3 m wide and 1 m deep; set `goal_width` and `goal_depth` in the simulation config to change them. Pygame draws this geometry. Scoring and goal-line crossing rules are not implemented yet.
 
 ## Run the browser preview
