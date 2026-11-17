@@ -121,6 +121,7 @@ def to_render_state(state):
         },
         "teams": {
             team_id: {
+                "covered_opponents": sorted(team.covered_opponents),
                 "players": [
                     {
                         "id": player.id,

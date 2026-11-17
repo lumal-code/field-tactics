@@ -6,7 +6,7 @@ from .objects import BallStatus
 from .physics import PhysicsConfig, advance_physics, pass_ball, plan_pass
 from .possession import PossessionSystem
 from .state import initialize_game, initialize_rondo
-from .tactics import MoveDecision, PassDecision, decide
+from .tactics import MoveDecision, PassDecision, decide, update_coverage
 
 
 class SoccerSimulation:
@@ -20,6 +20,7 @@ class SoccerSimulation:
             seed=config.get("seed"), receiving_distance=config.get("receiving_distance", 1.0),
         )
         self.possession.update_statuses(self.state)
+        update_coverage(self.state)
         self._targets = {}
 
     def step(self, dt=None):
@@ -79,3 +80,4 @@ class SoccerSimulation:
         if self.state.ball.status is not BallStatus.CONTROLLED and self.state.ball.velocity.magnitude() == 0:
             self.state.ball.pass_state = None
         self.possession.update_statuses(self.state)
+        update_coverage(self.state)

@@ -200,15 +200,40 @@ These are simple gameplay rules, rather than a realistic model of trapping, shie
 
 ### Defender decisions and interception prediction
 
-The team's pressing player is selected by distance to the carrier when controlled, or distance to the ball when free; player IDs break distance ties. The rondo defender stores an independent `Player.default_position` at `(pitch.width / 2, pitch.height / 2)`. If the ball is at least `Player.reset_distance` (default 5 m, measured center to center) from the defender, `defender_target` returns a copy of that default position before checking pursuit. This is a movement command rather than a teleport. It is reconsidered every tick: pursuit resumes immediately when the distance falls below the threshold, even if the return to center is incomplete. Players whose `default_position` is `None` have no distance reset rule; this includes the rondo attackers by default.
+The team's pressing player is selected by distance to the carrier when controlled, or distance to the ball when free; player IDs break distance ties. The current assignment still activates one pursuer per team. All teammates contribute to coverage, including players who are holding position.
 
-When the reset rule does not apply, `defender_target` selects one of three behaviors:
+`defender_target` selects among these behaviors:
 
-1. Controlled ball: target the carrier's current position directly.
+1. Controlled ball: blend carrier pressure with an uncovered receiver's passing lane, as described below.
 2. Free, moving ball: target an estimated interception point.
 3. Free, stationary ball: target the ball's current position directly.
 
+The rondo defender stores an independent `Player.default_position` at `(pitch.width / 2, pitch.height / 2)`. For a moving loose ball farther than `Player.reset_distance` (default 3 m, measured center to center), a player with a default position returns there through normal movement physics. At exactly 3 m or closer, it intercepts. This reset does not override controlled-ball defense or stationary-ball chasing. A player without a default position continues interception prediction, avoiding the earlier missing-default-position error. The decision is reconsidered every tick, so the return can be interrupted when the ball gets closer.
+
 The intended receiver of an active pass keeps the reception-point decision instead of using this defensive policy. Other eligible teams use it for their nearest pursuer. All returned targets are detached position values.
+
+#### Coverage and blended pressure
+
+Coverage is a geometric relation stored per team in `Team.covered_opponents`, using `(opponent_team_id, player_id)` identifiers. An opponent is covered if and only if at least one player on the defending team is within 3 m center to center. The threshold is inclusive. Coverage includes the carrier, but the carrier is excluded from passing options. It is recomputed before decisions and after movement, so opponents lose coverage as soon as the geometry no longer satisfies the rule. It is independent of receiving/dribbling status and of whether the pass line is blocked.
+
+For the selected defender, passing options are the carrier's teammates excluding covered players. Select the option nearest to the **carrier**, matching the attacker's nearest-teammate pass priority; equal distances use player IDs. If every option is covered, there is no receiver, or the receiver shares the carrier's position, press the carrier directly.
+
+Let D be defender position, A carrier position, and R the selected receiver position. The lane target L is the closest point to D on the finite A-to-R segment:
+
+```text
+S = R − A
+t = clamp(dot(D − A, S) / dot(S, S), 0, 1)
+L = A + tS
+distance = |A − D|
+w_lane = clamp((distance − 1) / (8 − 1), 0, 1)
+target = D + (1 − w_lane)(A − D) + w_lane(L − D)
+```
+
+The vectors retain their lengths; this is equivalent to blending the two target positions. Within 1 m the target is A, at 4.5 m it is halfway between A and L, and at 8 m or farther it is L. The nearest-point calculation is clamped to the segment endpoints, and zero-length lanes fall back to pressure. The actual player velocity still follows acceleration and turning constraints. This heuristic does not predict the receiver's movement or coordinate distinct lane assignments between multiple defenders.
+
+`covered_opponents` is exported as a sorted detached list of IDs in render state. While the ball is controlled, Pygame shows a `C` above attackers covered by an opposing team.
+
+#### Moving-ball prediction
 
 `predict_ball_position` uses the same exact free-rolling equation as `update_ball`, without mutating the ball. It includes rolling deceleration and the stopping point. The tactical search evaluates future times t from 0.05 s to 3 s in 0.05 s increments. Predicted targets are clipped inside the pitch by the ball radius, approximating the default closed training area.
 
@@ -272,7 +297,9 @@ Before comparing tactical strategies, validate running and stopping distances, t
 
 `tests/test_passing.py` checks the 3 m pressure threshold, nearest-teammate selection, blocked-lane fallback, both lanes blocked, segment endpoints, defender/ball radii, diagonal paths, distance ties, predicted arrival speed with and without friction, velocity direction, speed-cap rejection, complete reception, moving/backward releases without self-recapture, interception, detached pass metadata, and action ownership validation.
 
-`tests/test_defending.py` checks the stored center position, the inclusive 5 m reset threshold, its priority over pursuit, resuming pursuit inside the threshold, return movement through physics, the three defensive branches and state changes, nearest-carrier selection, intended-receiver priority, friction-aware and bounded prediction, player acceleration effects, prediction without state mutation, and a complete moving-ball interception.
+`tests/test_defending.py` checks the stored center position, the current 3 m moving-ball-only reset rule, its boundary behavior, return movement through physics, the three defensive branches and state changes, nearest-carrier selection, intended-receiver priority, friction-aware and bounded prediction, player acceleration effects, prediction without state mutation, and a complete moving-ball interception.
+
+`tests/test_coverage.py` checks inclusive 3 m coverage, contributions from any defender, team-specific IDs, removal of stale coverage, detached render data, refresh after physics, empty teams, the 1/4.5/8 m blend, endpoint clamping, self/team coverage, nearest-uncovered selection, and degenerate or fully covered options.
 
 These checks verify the stated numerical model. They do not establish biological accuracy, collision-free planning, or tactical quality.
 

@@ -88,6 +88,7 @@ class Team:
     id: str
     players: list[Player] = field(default_factory=list)
     formation: str = "3-player unit"
+    covered_opponents: set[tuple[str, int]] = field(default_factory=set)
 
 
 @dataclass

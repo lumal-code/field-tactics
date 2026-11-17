@@ -92,6 +92,12 @@ def draw_state(pygame, screen, state, font, small_font, step_count, running):
         for post in posts:
             pygame.draw.circle(screen, LINE, project(post), 3)
 
+    owner = state["ball"]["owner"]
+    attacking_team = owner[0] if owner is not None else None
+    covered_ids = {
+        opponent for team_id, team in state["teams"].items() if team_id != attacking_team
+        for opponent in team["covered_opponents"]
+    }
     for team_id, color in (("left", LEFT_PLAYER), ("right", RIGHT_PLAYER)):
         for player in state["teams"][team_id]["players"]:
             center = project(player["position"])
@@ -107,6 +113,9 @@ def draw_state(pygame, screen, state, font, small_font, step_count, running):
             pygame.draw.circle(screen, color, center, radius)
             label = small_font.render(str(player["id"]), True, BACKGROUND)
             screen.blit(label, label.get_rect(center=center))
+            if team_id == attacking_team and (team_id, player["id"]) in covered_ids:
+                marker = small_font.render("C", True, LINE)
+                screen.blit(marker, marker.get_rect(center=(center[0], center[1] - radius - 10)))
 
     ball_radius = max(5, round(state["ball"]["radius"] * scale))
     pygame.draw.circle(screen, BACKGROUND, project(state["ball"]), ball_radius + 2)
@@ -116,7 +125,6 @@ def draw_state(pygame, screen, state, font, small_font, step_count, running):
     status = small_font.render(f"{'RUNNING' if running else 'PAUSED'}  ·  {state['time']:.2f} s  ·  STEP {step_count}", True, MUTED)
     screen.blit(title, (PITCH_MARGIN, 24))
     screen.blit(status, (WINDOW_WIDTH - status.get_width() - PITCH_MARGIN, 31))
-    owner = state["ball"]["owner"]
     ball_label = f"Ball: {state['ball']['status']}"
     if owner is not None:
         ball_label += f" - {owner[0]} #{owner[1]}"
@@ -124,7 +132,7 @@ def draw_state(pygame, screen, state, font, small_font, step_count, running):
         receiver = state["ball"]["pass"]["receiver"]
         ball_label += f" - pass to {receiver[0]} #{receiver[1]}"
     screen.blit(small_font.render(ball_label, True, MUTED), (PITCH_MARGIN, 54))
-    legend = small_font.render("Blue ring: receiving   Gold ring: dribbling", True, MUTED)
+    legend = small_font.render("Blue: receiving   Gold: dribbling   C: covered", True, MUTED)
     screen.blit(legend, (WINDOW_WIDTH - legend.get_width() - PITCH_MARGIN, 54))
 
     help_text = "Space: play/pause   Right: single step   R: reset   Drag ball   Esc: quit"

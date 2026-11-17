@@ -22,7 +22,7 @@ class DefenderDecisionTests(unittest.TestCase):
         simulation = SoccerSimulation({"pitch_width": 40, "pitch_height": 30})
         defender = simulation.state.teams["right"].players[0]
         self.assertEqual(defender.default_position.distance(Vec2(20, 15)), 0)
-        self.assertEqual(defender.reset_distance, 5)
+        self.assertEqual(defender.reset_distance, 3)
         self.assertTrue(all(player.default_position is None for player in simulation.state.teams["left"].players))
         defender.position.x = 25
         self.assertEqual(defender.default_position.x, 20)
@@ -30,35 +30,35 @@ class DefenderDecisionTests(unittest.TestCase):
         rendered["teams"]["right"]["players"][0]["default_position"]["x"] = -1
         self.assertEqual(defender.default_position.x, 20)
 
-    def test_five_meter_reset_takes_priority_over_every_pursuit_branch(self):
+    def test_three_meter_reset_applies_only_to_moving_loose_balls(self):
         defender = Player(1, "right", Vec2(15, 10), default_position=Vec2(20, 10))
         carrier = Player(1, "left", Vec2(9.52, 10))
         ball = Ball(Vec2(10, 10))
         state = world(ball, [carrier, defender])
-        for status, velocity, owner in (
-            (BallStatus.LOOSE, Vec2(0, 0), None),
-            (BallStatus.LOOSE, Vec2(4, 0), None),
-            (BallStatus.CONTROLLED, Vec2(0, 0), ("left", 1)),
+        for status, velocity, owner, expected in (
+            (BallStatus.LOOSE, Vec2(0, 0), None, ball.position),
+            (BallStatus.LOOSE, Vec2(4, 0), None, defender.default_position),
+            (BallStatus.CONTROLLED, Vec2(0, 0), ("left", 1), carrier.position),
         ):
             with self.subTest(status=status, velocity=velocity):
                 ball.status, ball.velocity, ball.owner = status, velocity, owner
                 target = defender_target(defender, state)
-                self.assertEqual(target.distance(Vec2(20, 10)), 0)
+                self.assertEqual(target.distance(expected), 0)
                 target.x = -1
                 self.assertEqual(defender.default_position.x, 20)
 
     def test_pursuit_resumes_when_the_ball_is_closer_than_the_reset_distance(self):
         defender = Player(1, "right", Vec2(15, 10), default_position=Vec2(20, 10))
-        ball = Ball(Vec2(10, 10))
+        ball = Ball(Vec2(11.99, 10), velocity=Vec2(4, 0))
         state = world(ball, [defender])
         self.assertEqual(defender_target(defender, state).distance(defender.default_position), 0)
-        ball.position.x = 10.01
-        self.assertEqual(defender_target(defender, state).distance(ball.position), 0)
+        ball.position.x = 12
+        self.assertEqual(defender_target(defender, state).distance(interception_target(defender, state)), 0)
 
     def test_reset_moves_through_physics_instead_of_teleporting(self):
         defender = Player(1, "right", Vec2(15, 10), default_position=Vec2(20, 10))
         simulation = SoccerSimulation({"seed": 1})
-        simulation.state = world(Ball(Vec2(8, 10)), [defender])
+        simulation.state = world(Ball(Vec2(8, 10), velocity=Vec2(-1, 0)), [defender])
         for _ in range(60):
             simulation.step()
         self.assertGreater(defender.position.x, 15)

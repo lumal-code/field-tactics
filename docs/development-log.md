@@ -106,3 +106,12 @@ For future entries, record the date, what changed, why, important parameters/for
 - Verification: Checks actually run and their results, or "not run".
 - Observations: Measured effects, remaining limitations, or follow-up questions.
 ```
+
+### 2026-11-13 — Opponent coverage and blended defensive targets
+
+- **Changed:** Each team stores covered opponents as `(team_id, player_id)` keys. Coverage means at least one teammate is within 3 m, inclusive, using center-to-center distance. Refresh coverage before decisions and after physics; expose a sorted copy in render state and show `C` above covered attackers in Pygame.
+- **Reason:** Prioritize lanes to available receivers while transitioning smoothly to direct carrier pressure as the defender closes in.
+- **Target rule:** Among the carrier's uncovered teammates, choose the closest to the carrier (ties by player ID). Project the defender onto the finite carrier-to-receiver segment to obtain lane target `L`. With defender position `D`, carrier position `A`, and `d = |A-D|`, use `w = clamp((d-1)/7, 0, 1)` and `target = D + (1-w)(A-D) + w(L-D)`. This gives direct pressure at or below 1 m and the lane target at or beyond 8 m. With no uncovered receiver or a zero-length lane, pursue the carrier.
+- **Related fix:** Guard a missing default position before returning home. Retain the current 3 m reset for moving loose balls only; update stale reset assertions and documentation accordingly. This fixes the missing-default-position defect recorded above.
+- **Verification:** `npm test` passed all 82 tests, including 13 new coverage/target tests. Tests cover the inclusive coverage boundary, team identity, coverage refresh, receiver selection, blend endpoints/midpoint, finite lane projection, and fallbacks. A seeded 10-second rondo run checked stored coverage against geometry at every tick. A headless Pygame render was visually inspected for the `C` marker. These checks establish implementation behavior, not improved tactical performance.
+- **Scope:** Retain one active pursuing defender per team; all teammates contribute coverage. Coordinating multiple lane blockers remains future work.

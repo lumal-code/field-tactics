@@ -6,6 +6,10 @@ from .objects import BallStatus
 from .physics import EPSILON, plan_pass, predict_ball_position
 from .vectors import Vec2
 
+COVERAGE_DISTANCE = 3.0
+FULL_PRESS_DISTANCE = 1.0
+FULL_LANE_DISTANCE = 8.0
+
 
 @dataclass(frozen=True)
 class MoveDecision:
@@ -44,6 +48,52 @@ def is_pass_blocked(origin, target, defenders, ball_radius):
     return False
 
 
+def covered_opponent_ids(team, state):
+    """Coverage is relative to a team and uses center-to-center distance."""
+    return {
+        (opponent.team_id, opponent.id)
+        for other_team in state.teams.values() if other_team.id != team.id
+        for opponent in other_team.players
+        if any(defender.position.distance(opponent.position) <= COVERAGE_DISTANCE for defender in team.players)
+    }
+
+
+def update_coverage(state):
+    for team in state.teams.values():
+        team.covered_opponents = covered_opponent_ids(team, state)
+
+
+def press_lane_weight(distance):
+    """Linearly shift from carrier pressure at 1 m to the lane at 8 m."""
+    return min(max((distance - FULL_PRESS_DISTANCE) / (FULL_LANE_DISTANCE - FULL_PRESS_DISTANCE), 0.0), 1.0)
+
+
+def controlled_defender_target(player, carrier, state, covered):
+    """Blend pressure with the lane to the carrier's nearest uncovered teammate."""
+    receivers = [
+        candidate for team in state.teams.values() for candidate in team.players
+        if candidate.team_id == carrier.team_id and candidate.id != carrier.id
+        and (candidate.team_id, candidate.id) not in covered
+    ]
+    receiver = min(
+        receivers, key=lambda candidate: (carrier.position.distance(candidate.position), candidate.id),
+        default=None,
+    )
+    if receiver is None:
+        return carrier.position.copy()
+
+    lane = receiver.position - carrier.position
+    length_squared = lane.dot(lane)
+    if length_squared <= EPSILON:
+        return carrier.position.copy()
+    fraction = min(max((player.position - carrier.position).dot(lane) / length_squared, 0.0), 1.0)
+    lane_target = carrier.position + lane * fraction
+    to_carrier = carrier.position - player.position
+    to_lane = lane_target - player.position
+    lane_weight = press_lane_weight(to_carrier.magnitude())
+    return player.position + to_carrier * (1 - lane_weight) + to_lane * lane_weight
+
+
 def interception_target(player, state):
     """Choose the earliest estimated reachable ball position within three seconds."""
     ball = state.ball
@@ -68,7 +118,7 @@ def interception_target(player, state):
     return target
 
 
-def defender_target(player, state):
+def defender_target(player, state, covered=None):
     if state.ball.status is BallStatus.CONTROLLED:
         carrier = next((
             candidate for team in state.teams.values() for candidate in team.players
@@ -76,15 +126,20 @@ def defender_target(player, state):
         ), None)
         if carrier is None:
             raise ValueError("a controlled ball must reference an existing owner")
-        return carrier.position.copy()
-    if state.ball.velocity.magnitude() > EPSILON and player.position.distance(state.ball.position) <= player.reset_distance:
+        if covered is None:
+            team = state.teams[player.team_id]
+            covered = covered_opponent_ids(team, state)
+            team.covered_opponents = covered
+        return controlled_defender_target(player, carrier, state, covered)
+    if state.ball.velocity.magnitude() > EPSILON:
+        if player.default_position is not None and player.position.distance(state.ball.position) > player.reset_distance:
+            return player.default_position.copy()
         return interception_target(player, state)
-    if state.ball.velocity.magnitude() > EPSILON and player.position.distance(state.ball.position) >= player.reset_distance:
-        return player.default_position.copy()
     return state.ball.position.copy()
 
 
 def decide(state):
+    update_coverage(state)
     decisions = []
     carrier = None
     if state.ball.status is BallStatus.CONTROLLED:
@@ -132,5 +187,5 @@ def decide(state):
             team.players,
             key=lambda player: (player.position.distance(carrier.position if carrier is not None else state.ball.position), player.id),
         )
-        decisions.append(MoveDecision(team.id, nearest.id, defender_target(nearest, state)))
+        decisions.append(MoveDecision(team.id, nearest.id, defender_target(nearest, state, team.covered_opponents)))
     return decisions
