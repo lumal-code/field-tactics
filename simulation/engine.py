@@ -6,7 +6,7 @@ from .objects import BallStatus
 from .physics import PhysicsConfig, advance_physics, pass_ball, plan_pass
 from .possession import PossessionSystem
 from .state import initialize_game, initialize_rondo
-from .tactics import MoveDecision, PassDecision, decide, update_coverage
+from .tactics import VelocityDecision, MoveDecision, PassDecision, decide, update_coverage
 
 
 class SoccerSimulation:
@@ -22,29 +22,40 @@ class SoccerSimulation:
         self.possession.update_statuses(self.state)
         update_coverage(self.state)
         self._targets = {}
+        self._velocities = {}
 
-    def step(self, dt=None):
+    def step(self, dt=None, *, ignore_player=None, desired_velocity=None):
         dt = self.fixed_dt if dt is None else dt
         if not isfinite(dt) or not 0 < dt <= self.physics_config.max_step:
             raise ValueError("dt must be positive and no larger than physics.max_step")
         self.possession.update_statuses(self.state)
-        decisions = self.get_decisions()
+        decisions = self.get_decisions(ignore_player)
+
+        if desired_velocity is not None:
+            if ignore_player is None:
+                raise ValueError("A velocity command needs a controlled player")
+
+            team_id, player_id = ignore_player
+            decisions.append(
+                VelocityDecision(team_id, player_id, desired_velocity)
+            )
         self.apply_actions(decisions, dt)
         self.update_physics(dt)
         self.resolve_game_rules()
         return self.state
 
-    def get_decisions(self):
-        return decide(self.state)
+    def get_decisions(self, ignore_player=None):
+        return decide(self.state, ignore_player)
 
     def apply_actions(self, decisions, dt):
         """Validate the batch, launch any pass, and store movement targets."""
         players = {(player.team_id, player.id): player for team in self.state.teams.values() for player in team.players}
         targets = {}
+        velocities = {}
         seen = set()
         passing = None
         for decision in decisions:
-            if not isinstance(decision, (MoveDecision, PassDecision)):
+            if not isinstance(decision, (MoveDecision, PassDecision, VelocityDecision)):
                 raise ValueError(f"unsupported action: {type(decision).__name__}")
             key = (decision.team_id, decision.player_id)
             if key not in players or key in seen:
@@ -52,6 +63,8 @@ class SoccerSimulation:
             seen.add(key)
             if isinstance(decision, MoveDecision):
                 targets[key] = decision.target.copy()
+            elif isinstance(decision, VelocityDecision):
+                velocities[key] = decision.velocity.copy()
             elif isinstance(decision, PassDecision):
                 receiver_key = (decision.team_id, decision.receiver_id)
                 if (
@@ -68,11 +81,12 @@ class SoccerSimulation:
             pass_ball(self.state.ball, passer, receiver)
             targets[(receiver.team_id, receiver.id)] = self.state.ball.pass_state.target.copy()
         self._targets = targets
+        self._velocities = velocities
 
     def update_physics(self, dt):
         advance_physics(
             self.state, self._targets, dt, self.physics_config,
-            on_ball_contacts=self.possession.resolve_contacts,
+            on_ball_contacts=self.possession.resolve_contacts, velocities=self._velocities
         )
         self.state.time += dt
 

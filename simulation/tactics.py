@@ -17,6 +17,12 @@ class MoveDecision:
     player_id: int
     target: Vec2  # Absolute pitch position, in meters.
 
+@dataclass(frozen=True)
+class VelocityDecision:
+    team_id: str
+    player_id: int
+    velocity: Vec2
+
 
 @dataclass(frozen=True)
 class PassDecision:
@@ -138,7 +144,7 @@ def defender_target(player, state, covered=None):
     return state.ball.position.copy()
 
 
-def decide(state):
+def decide(state, ignore_player=None):
     update_coverage(state)
     decisions = []
     carrier = None
@@ -188,4 +194,8 @@ def decide(state):
             key=lambda player: (player.position.distance(carrier.position if carrier is not None else state.ball.position), player.id),
         )
         decisions.append(MoveDecision(team.id, nearest.id, defender_target(nearest, state, team.covered_opponents)))
-    return decisions
+    return [
+        decision
+        for decision in decisions
+        if (decision.team_id, decision.player_id) != ignore_player
+    ]

@@ -79,6 +79,39 @@ def move_player(player, target, dt):
     if player.velocity.magnitude() > EPSILON:
         player.facing = player.velocity.normalize()
 
+def move_player_with_velocity(player, velocity, dt):
+    """Arrive at an absolute target; None requests a controlled stop."""
+    _validate_dt(dt)
+    desired_velocity = velocity
+
+    speed = player.velocity.magnitude()
+    requested = (desired_velocity - player.velocity) / max(player.response_time, dt)
+    # An idle/arrived command actively brakes instead of leaving perpetual drift.
+    if desired_velocity.magnitude() <= EPSILON:
+        requested = player.velocity * (-1 / dt)
+
+    if speed <= EPSILON:
+        acceleration = requested.limit(player.max_acceleration)
+    else:
+        forward = player.velocity / speed
+        longitudinal = requested.dot(forward)
+        lateral = requested - forward * longitudinal
+        longitudinal_limit = player.max_acceleration if longitudinal >= 0 else player.max_deceleration
+        # An ellipse shares the motor budget between speed changes and turning.
+        demand = sqrt(
+            (longitudinal / longitudinal_limit) ** 2
+            + (lateral.magnitude() / player.max_lateral_acceleration) ** 2
+        )
+        acceleration = requested * (1 / max(1.0, demand))
+
+    previous_velocity = player.velocity
+    player.velocity = (previous_velocity + acceleration * dt).limit(player.max_speed)
+    player.acceleration = (player.velocity - previous_velocity) / dt
+    player.position += player.velocity * dt
+    if player.velocity.magnitude() > EPSILON:
+        player.facing = player.velocity.normalize()
+
+
 
 def kick_ball(ball, direction, power):
     """Apply a delta velocity in m/s and release any existing owner."""
@@ -212,9 +245,11 @@ def _notify_ball_contacts(state, players, handler):
         handler(state, contacts)
 
 
-def advance_physics(state, targets, dt, config=PhysicsConfig(), on_ball_contacts=None):
+def advance_physics(state, targets, dt, config=PhysicsConfig(), on_ball_contacts=None, velocities=None):
     """Advance all bodies together with bounded substeps and stable contact order."""
     _validate_dt(dt)
+    if velocities is None:
+        velocities = {}
     if dt > config.max_step:
         raise ValueError(f"dt must not exceed {config.max_step}; advance multiple ticks instead")
     players = [
@@ -243,7 +278,12 @@ def advance_physics(state, targets, dt, config=PhysicsConfig(), on_ball_contacts
     _notify_ball_contacts(state, players, on_ball_contacts)
     for _ in range(substeps):
         for player in players:
-            move_player(player, targets.get((player.team_id, player.id)), h)
+            key = (player.team_id, player.id)
+            if (player.team_id, player.id) in velocities:
+                velocity = velocities[key]
+                move_player_with_velocity(player, velocity, h)
+            else:
+                move_player(player, targets.get((player.team_id, player.id)), h)
         update_ball(state.ball, h)
         if state.ball.status is BallStatus.CONTROLLED:
             _attach_controlled_ball(state, players)

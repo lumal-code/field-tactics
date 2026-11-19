@@ -87,7 +87,7 @@ def initialize_rondo(config):
         time=0.0,
         pitch={"width": width, "height": height},
         ball=Ball(position=Vec2(width * 0.68, center_y), **config.get("ball", {})),
-        teams={"left": attackerTeam("left", width * 0.5), "right": defenderTeam("right", width * 0.5)},
+        teams={"left": attackerTeam("attacker", width * 0.5), "defender": defenderTeam("right", width * 0.5)},
         goals={
             "left": Goal("left", Vec2(0, center_y), Vec2(1, 0), goal_width, goal_depth),
             "right": Goal("right", Vec2(width, center_y), Vec2(-1, 0), goal_width, goal_depth),
