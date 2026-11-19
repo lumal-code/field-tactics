@@ -60,7 +60,7 @@ def initialize_rondo(config):
                 Player(
                     id=player_id, team_id=team_id,
                     position=Vec2(x + offset_x * width / 68, center_y + offset_y * height / 68),
-                    facing=Vec2(1 if team_id == "left" else -1, 0),
+                    facing=Vec2(1 if team_id == "defender" else -1, 0),
                     **config.get("player", {}),
                 )
                 for player_id, offset_y, offset_x in ((2, 10, -10), (3, -10, 0), (4, 10, 10))
@@ -87,7 +87,7 @@ def initialize_rondo(config):
         time=0.0,
         pitch={"width": width, "height": height},
         ball=Ball(position=Vec2(width * 0.68, center_y), **config.get("ball", {})),
-        teams={"left": attackerTeam("attacker", width * 0.5), "defender": defenderTeam("right", width * 0.5)},
+        teams={"attacker": attackerTeam("attacker", width * 0.5), "defender": defenderTeam("defender", width * 0.5)},
         goals={
             "left": Goal("left", Vec2(0, center_y), Vec2(1, 0), goal_width, goal_depth),
             "right": Goal("right", Vec2(width, center_y), Vec2(-1, 0), goal_width, goal_depth),

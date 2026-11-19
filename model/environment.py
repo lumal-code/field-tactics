@@ -75,6 +75,9 @@ class RondoEnv(gym.Env):
         Returns:
             tuple: (observation, reward, terminated, truncated, info)
         """
+        winning_ball_reward = 10
+        time_cost_per_second = 0.2
+
         velocity = Vec2(action[0], action[1])
         reward = 0
         terminated = False  
@@ -82,8 +85,19 @@ class RondoEnv(gym.Env):
         # run 6 physics ticks
         for _ in range(6):
             self.sim.step(ignore_player=self.player_key, desired_velocity=velocity)
+            if self.sim.state.time >= 30.0:
+                truncated = True
+                break
+
+            if self.sim.state.ball.owner == self.player_key:
+                reward += winning_ball_reward
+                terminated = True
+                break
+
+            reward -= time_cost_per_second * self.sim.fixed_dt
         
-        observation = get_obs(self.state)
+        observation = get_obs(self.sim.state, self.player_key)
+        info = {"time": self.sim.state.time}
         
         return observation, reward, terminated, truncated, info
 
