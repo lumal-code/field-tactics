@@ -1,25 +1,29 @@
 import gymnasium as gym
+from stable_baselines3 import PPO
+from stable_baselines3.common.env_checker import check_env
+from stable_baselines3.common.monitor import Monitor
 
-env = gym.make('CartPole-v1', render_mode='human')
+from .environment import RondoEnv
 
-observation, info = env.reset()
+def main():
+# Check that observations, actions, and return values fit SB3.
+    check_env(RondoEnv())
 
-print(f"Starting observation: {observation}")
+    # Monitor records episode rewards and lengths.
+    env = Monitor(RondoEnv())
 
-episode_over = False
-total_reward = 0
+    model = PPO(
+        "MlpPolicy",
+        env,
+        verbose=1,
+        device="cpu",
+        seed=42,
+    )
 
-while not episode_over:
-    action = env.action_space.sample()
+    model.learn(total_timesteps=10_000)
+    model.save("rondo_defender")
 
-    observation, reward, terminated, truncated, info = env.step(action)
+    env.close()
 
-    total_reward += reward
-
-    if truncated:
-        print('truncated')
-
-    episode_over = terminated or truncated
-
-print(f"episode over. total reward: {total_reward}")
-env.close()
+if __name__ == '__main__':
+    main()

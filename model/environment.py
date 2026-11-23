@@ -12,6 +12,7 @@ class RondoEnv(gym.Env):
         self.config = dict(config or {})
         self.player_key = player_key
         self.sim = None
+        self.player = None
 
         # Four players × five features, plus four ball features.
         self.observation_space = gym.spaces.Box(
@@ -60,6 +61,13 @@ class RondoEnv(gym.Env):
         )
 
         self.sim = SoccerSimulation(episode_config)
+        self.player = next((
+            player for team in self.sim.state.teams.values() for player in team.players
+            if (player.team_id, player.id) == self.player_key
+        ), None)
+
+        if self.player is None:
+            raise ValueError(f"Player not found in game: {self.player_key}")
 
         observation = get_obs(self.sim.state, self.player_key)
         info = {"time": self.sim.state.time}
@@ -78,7 +86,9 @@ class RondoEnv(gym.Env):
         winning_ball_reward = 10
         time_cost_per_second = 0.2
 
-        velocity = Vec2(action[0], action[1])
+        max_speed = self.player.max_speed
+        raw_vel = Vec2(action[0], action[1])
+        velocity = (raw_vel * max_speed).limit(max_speed)
         reward = 0
         terminated = False  
         truncated = False

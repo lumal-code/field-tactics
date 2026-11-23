@@ -52,7 +52,7 @@ def screen_to_pitch(point, pitch, goal_depth=0.0):
     }
 
 
-def draw_state(pygame, screen, state, font, small_font, step_count, running):
+def draw_state(pygame, screen, state, font, small_font, step_count, running, *, detail_text=None):
     state = to_render_state(state)
     screen.fill(BACKGROUND)
     pitch = state["pitch"]
@@ -98,7 +98,7 @@ def draw_state(pygame, screen, state, font, small_font, step_count, running):
         opponent for team_id, team in state["teams"].items() if team_id != attacking_team
         for opponent in team["covered_opponents"]
     }
-    for team_id, color in (("left", LEFT_PLAYER), ("right", RIGHT_PLAYER)):
+    for team_id, color in (("attacker", LEFT_PLAYER), ("defender", RIGHT_PLAYER)):
         for player in state["teams"][team_id]["players"]:
             center = project(player["position"])
             tip = project({
@@ -138,6 +138,8 @@ def draw_state(pygame, screen, state, font, small_font, step_count, running):
     help_text = "Space: play/pause   Right: single step   R: reset   Drag ball   Esc: quit"
     help_surface = small_font.render(help_text, True, MUTED)
     screen.blit(help_surface, (PITCH_MARGIN, WINDOW_HEIGHT - 29))
+    if detail_text:
+        screen.blit(small_font.render(detail_text, True, TEXT), (PITCH_MARGIN, WINDOW_HEIGHT - 46))
     pygame.display.flip()
 
 
@@ -222,6 +224,29 @@ def main():
     finally:
         pygame.quit()
 
+
+class FieldVisualizer:
+
+    WINDOW_WIDTH = 1080
+    WINDOW_HEIGHT = 800
+    PITCH_MARGIN = 40
+    PITCH_TOP = 72
+    PITCH_WIDTH = 1000
+    PITCH_HEIGHT = 680
+
+    BACKGROUND = (16, 27, 25)
+    GRASS = (23, 59, 50)
+    LINE = (194, 222, 202)
+    LEFT_PLAYER = (213, 238, 224)
+    RIGHT_PLAYER = (241, 155, 135)
+    BALL = (255, 255, 255)
+    TEXT = (233, 238, 233)
+    MUTED = (169, 188, 176)
+    RECEIVING = (102, 190, 235)
+    DRIBBLING = (247, 202, 120)
+
+    def __init__():
+        
 
 if __name__ == "__main__":
     main()
